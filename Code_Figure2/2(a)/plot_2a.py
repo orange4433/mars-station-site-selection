@@ -55,7 +55,7 @@ def calculate_daily_mean_wind_speed(nc_file_path, lat=None, lon=None):
 def plot_daily_mean_wind_speed(nc_file_path, lat=None, lon=None, 
                               wind_east_file='wind_east.npy', 
                               wind_north_file='wind_north.npy'):
-    # 计算MCD模型每天平均风速和对应的Ls值
+    # Calculate daily mean MCD wind speed and the corresponding Ls values.
     mcd_daily_mean, mcd_Ls_values = calculate_daily_mean_wind_speed(nc_file_path, lat, lon)
     smoothed_mcd = gaussian_filter1d(mcd_daily_mean, sigma=1.5)
     
@@ -69,10 +69,10 @@ def plot_daily_mean_wind_speed(nc_file_path, lat=None, lon=None,
         top=1 - 17 / 907, bottom=1 - 816 / 907,
     )
     
-    # 绘制平滑后的MCD模型曲线（Ls作为y轴，风速作为x轴）
+    # Plot the smoothed MCD curve with Ls on the y-axis and wind speed on the x-axis.
     ax.plot(smoothed_mcd, mcd_Ls_values, 'b-', linewidth=3, label='MCD Model')
     
-    # 加载实测风速数据
+    # Load observed wind-speed data.
     if os.path.exists(wind_east_file) and os.path.exists(wind_north_file):
         wind_east = np.load(wind_east_file)
         wind_north = np.load(wind_north_file)
@@ -94,7 +94,7 @@ def plot_daily_mean_wind_speed(nc_file_path, lat=None, lon=None,
         mars_days = np.array([insight_sol_to_mars_day(sol) for sol in sol_values])
         obs_Ls_values = np.array([mars_sol2ls(md) for md in mars_days])
         
-        # 找出连续的有效数据段
+        # Find contiguous segments of valid data.
         valid_indices = ~np.isnan(obs_daily_mean)
         segments = []
         current_segment = []
@@ -110,35 +110,35 @@ def plot_daily_mean_wind_speed(nc_file_path, lat=None, lon=None,
         if current_segment:
             segments.append(current_segment)
         
-        # 创建一个标志，用于记录是否已经添加了图例标签
+        # Track whether a legend label has already been added.
         obs_label_added = False
         
-        # 只绘制连续段（至少3个点）
+        # Plot only contiguous segments with at least 3 points.
         for segment in segments:
             if len(segment) >= 3:
                 segment_data = obs_daily_mean[segment]
                 segment_Ls = obs_Ls_values[segment]
                 
-                # 检查是否在225-315 Ls区间
+                # Check whether Ls lies between 225 and 315 degrees.
                 in_special_range = np.any((segment_Ls >= 225) & (segment_Ls <= 315))
                 
-                # 根据区间选择不同的平滑系数
+                # Select smoothing parameters for the interval.
                 sigma = 2.5 if in_special_range else 1
                 smoothed_segment = gaussian_filter1d(segment_data, sigma=sigma)
                 
-                # 绘制连续段（Ls作为y轴，风速作为x轴）
-                # 如果还没有添加图例标签，则添加标签，否则不添加
+                # Plot the contiguous segment with Ls on the y-axis and wind speed on the x-axis.
+                # Add the legend label only once.
                 if not obs_label_added:
                     ax.plot(smoothed_segment, segment_Ls, 'r-', linewidth=4, label='InSight Observation')
                     obs_label_added = True
                 else:
                     ax.plot(smoothed_segment, segment_Ls, 'r-', linewidth=4)
     
-    # 设置坐标轴
+    # Configure the axes.
     ax.set_xlabel('Daily Mean Wind Speed (m/s)', fontdict={'family': 'Arial', 'fontsize': 16})
     ax.set_ylabel('Solar Longitude (Ls)', fontdict={'family': 'Arial', 'fontsize': 16}, labelpad=42)
     
-    # 修改这里：将y轴移到左边
+    # Move the y-axis to the left.
     ax.yaxis.set_label_position("left")
     ax.yaxis.tick_left()
     ax.yaxis.set_ticks_position('left')
@@ -170,25 +170,25 @@ def plot_daily_mean_wind_speed(nc_file_path, lat=None, lon=None,
                 transform=ax.transAxes, ha='right', va='center',
                 fontfamily='Arial', fontsize=14)
     
-    # 设置x轴（风速）0到11
+    # Set the wind-speed x-axis range to 0 to 11.
     ax.set_xlim(0, 11)
     ax.set_xticks(np.arange(0, 12, 1))
     ax.set_xticklabels(np.arange(0, 12, 1), fontname='Arial', fontsize=14)
     
-    # 添加网格
+    # Add a grid.
     ax.grid(True, linestyle='--', alpha=0.7)
     
     ax.legend(loc='upper right', fontsize=13, framealpha=1,
               facecolor='white', edgecolor='black')
     
-    # 优化布局，确保横坐标标签可见
+    # Adjust the layout so the x-axis label is visible.
     output_file = Path(wind_east_file).resolve().parent / '2(a)' / 'Figure2a.png'
     fig.savefig(output_file, dpi=300, facecolor='white')
     fig.savefig(output_file.with_suffix('.pdf'), facecolor='white')
     plt.close(fig)
     print(f'Saved: {output_file}')
 
-# 使用示例
+# Usage example
 if __name__ == "__main__":
     figure2_dir = Path(__file__).resolve().parents[1]
     archive_root = figure2_dir.parent

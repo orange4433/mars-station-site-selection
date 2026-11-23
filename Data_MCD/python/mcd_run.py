@@ -249,13 +249,13 @@ if len(var_list_2d)>0:
     data_dict_2d = init_data_dict(var_list_2d,((nlon,nlat,nloc,nLs)))
 
 def get_mcd_data(ils):
-    # 只需要初始化U和V的数据结构
+    # Initialize data structures for U and V only.
     data_dict_ = init_data_dict(var_list_3d, (nlon, nlat, nloc))
     
     for iloc in range(nloc):
         for ilon in range(nlon):
             for ilat in range(nlat):
-                # 只需要处理地表1m高度 (iz=0)
+                # Process only the level 1 m above the surface (iz=0).
                 iz = 0
                 (pres, dens, temp, zonwind, merwind, 
                  meanvar, extvar, seedout, ierr) = \
@@ -267,11 +267,11 @@ def get_mcd_data(ils):
                              dset, input_dict['dust'],
                              perturkey, seedin, gwlength, extvarkeys)
                 
-                # 只保存U和V数据
+                # Save only U and V data.
                 rdata_dict = {}
                 rdata_dict['temp'] = temp
                 
-                # 保存数据 - 注意现在只有3个维度 (经度, 纬度, 时间)
+                # Save data with three dimensions: longitude, latitude, time.
                 for var_name in var_list_3d:
                     data_dict_[var_name][ilon, ilat, iloc] = rdata_dict[var_name]
     
@@ -380,10 +380,10 @@ save_file_checker( os.path.join(save_path,'3D_temp.nc'\
     %(input_dict['dust'],Ls[0],Ls[-1])))
 save_file_checker(os.path.join(save_path,'2D_vars_ds_%s_LS_%.2f-%.2f_rev1.1.nc'\
     %(input_dict['dust'],Ls[0],Ls[-1])))
-# 修改数据保存部分
+# Update the data-saving section.
 nc_save_dict_3d = {}
 for var_name in var_list_3d:
-    # 维度变为 (经度, 纬度, 时间, Ls)
+    # Dimensions become (longitude, latitude, time, Ls).
     nc_save_dict_3d[var_name] = (('longitude', 'latitude', 'ut', 'Ls'), data_dict[var_name])
 
 save_dataset_3d = xr.Dataset(data_vars=nc_save_dict_3d,

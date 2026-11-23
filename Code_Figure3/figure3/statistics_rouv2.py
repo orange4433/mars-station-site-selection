@@ -2,21 +2,21 @@ import netCDF4 as nc
 import numpy as np
 import os
 
-# 阈值参数 - 只需修改这里
-THRESHOLD = 0.1  # 单位: Pa
+# Threshold parameter; change it here.
+THRESHOLD = 0.1  # Units: Pa
 
 def calculate_rho_v2_percentage(nc_file_path, threshold=THRESHOLD):
     """
-    计算动压≤阈值的时间占比，保存为txt文件
+    Calculate the time fraction with dynamic pressure at or below the threshold and save it as text.
     """
-    # 检查文件
+    # Check the file.
     if not os.path.exists(nc_file_path):
         print(f"错误: 文件 '{nc_file_path}' 不存在!")
         return
     
     print(f"计算动压 ≤ {threshold} Pa 的时间占比...")
     
-    # 读取数据
+    # Read data.
     with nc.Dataset(nc_file_path, 'r') as ds:
         rho_v2 = (1/2)*ds.variables['rho_v2'][:]  # (65, 49, 48, 721)
         lons = ds.variables['longitude'][:]  # (65,)
@@ -24,12 +24,12 @@ def calculate_rho_v2_percentage(nc_file_path, threshold=THRESHOLD):
         ut = ds.variables['ut'][:]           # (48,)
         Ls = ds.variables['Ls'][:]           # (721,)
     
-    # 计算时间占比
+    # Calculate the time fraction.
     below_threshold_count = np.sum(rho_v2 <= threshold, axis=(2, 3))  # (65, 49)
     total_time_points = len(ut) * len(Ls)  # 48 * 721
     percentage = (below_threshold_count / total_time_points) * 100  # (65, 49)
     
-    # 保存结果
+    # Save the results.
     output_dir = f"rho_v2_threshold_{threshold}"
     os.makedirs(output_dir, exist_ok=True)
     
@@ -39,10 +39,10 @@ def calculate_rho_v2_percentage(nc_file_path, threshold=THRESHOLD):
         f.write("Latitude, Longitude, Percentage\n")
         for i, lat in enumerate(lats):
             for j, lon in enumerate(lons):
-                perc = percentage[j, i]  # j:经度, i:纬度
+                perc = percentage[j, i]  # j: longitude, i: latitude
                 f.write(f"{lat:.2f}, {lon:.2f}, {perc:.2f}\n")
     
-    # InSight位置统计
+    # Statistics at InSight
     insight_lat = 4.5
     insight_lon = 135.6
     
@@ -53,33 +53,33 @@ def calculate_rho_v2_percentage(nc_file_path, threshold=THRESHOLD):
     actual_lat = lats[lat_idx]
     actual_lon = lons[lon_idx]
     
-    # 计算时间占比超过InSight的区域面积占比
-    # 计算每个网格的面积权重（考虑纬度对面积的影响）
-    # 地球半径: 火星半径 3396.2 km
-    mars_radius = 3396.2  # 单位: km
-    dlon = np.abs(lons[1] - lons[0])  # 经度间隔
-    dlat = np.abs(lats[1] - lats[0])  # 纬度间隔
+    # Calculate the area fraction with a time fraction greater than InSight's.
+    # Calculate grid-cell area weights, accounting for latitude.
+    # Planetary radius: Mars radius = 3396.2 km.
+    mars_radius = 3396.2  # Units: km
+    dlon = np.abs(lons[1] - lons[0])  # Longitude spacing
+    dlat = np.abs(lats[1] - lats[0])  # Latitude spacing
     
-    # 创建纬度权重数组（纬度越高，相同经度间隔的实际距离越短）
+    # Latitude weights account for shorter zonal distances at higher latitudes.
     lat_weights = np.cos(np.deg2rad(lats))
     
-    # 计算每个格点的面积权重
-    area_weights = np.outer(np.ones_like(lons), lat_weights)  # 形状: (65, 49)
+    # Calculate each grid cell's area weight.
+    area_weights = np.outer(np.ones_like(lons), lat_weights)  # Shape: (65, 49)
     
-    # 找出时间占比超过InSight的格点
+    # Find cells whose time fraction exceeds InSight's.
     above_insight_mask = percentage > insight_percentage
     
-    # 计算超过InSight的格点数量和总面积权重
+    # Count cells above InSight and sum their area weights.
     num_total_grids = np.prod(percentage.shape)
     num_above_insight = np.sum(above_insight_mask)
     grid_percentage_above = (num_above_insight / num_total_grids) * 100
     
-    # 计算超过InSight的面积权重占比
+    # Calculate the area-weighted fraction above InSight.
     total_area_weight = np.sum(area_weights)
     above_insight_area_weight = np.sum(area_weights[above_insight_mask])
     area_percentage_above = (above_insight_area_weight / total_area_weight) * 100
     
-    # 输出统计
+    # Print statistics.
     print(f"\n动压 ≤ {threshold} Pa 统计:")
     print(f"  InSight ({actual_lon:.1f}°E, {actual_lat:.1f}°N): {insight_percentage:.1f}%")
     print(f"  全球平均: {np.nanmean(percentage):.1f}%")
@@ -90,7 +90,7 @@ def calculate_rho_v2_percentage(nc_file_path, threshold=THRESHOLD):
     print(f"  格点数量占比: {grid_percentage_above:.1f}% ({num_above_insight}/{num_total_grids})")
     print(f"  面积权重占比: {area_percentage_above:.1f}%")
     
-    # 保存超过InSight区域的详细信息
+    # Save details of regions above InSight.
     above_insight_file = os.path.join(output_dir, f"above_insight_threshold_{threshold}.txt")
     with open(above_insight_file, 'w') as f:
         f.write(f"InSight位置 ({actual_lon:.1f}°E, {actual_lat:.1f}°N) 时间占比: {insight_percentage:.2f}%\n")
@@ -100,14 +100,14 @@ def calculate_rho_v2_percentage(nc_file_path, threshold=THRESHOLD):
         f.write("超过InSight的格点详情:\n")
         f.write("Latitude, Longitude, Percentage\n")
         
-        # 找出所有超过InSight的格点并排序（从高到低）
+        # Find all cells above InSight and sort from highest to lowest.
         above_indices = np.where(above_insight_mask)
         above_values = percentage[above_indices]
         above_lats = lats[above_indices[1]]
         above_lons = lons[above_indices[0]]
         
-        # 按百分比排序
-        sorted_indices = np.argsort(above_values)[::-1]  # 从高到低
+        # Sort by percentage.
+        sorted_indices = np.argsort(above_values)[::-1]  # Descending order
         for idx in sorted_indices:
             lat = above_lats[idx]
             lon = above_lons[idx]
@@ -120,7 +120,7 @@ def calculate_rho_v2_percentage(nc_file_path, threshold=THRESHOLD):
     return percentage
 
 if __name__ == "__main__":
-    # 文件路径
+    # File path
     nc_file = "rho_v2_output.nc" if os.path.exists("rho_v2_output.nc") else "../rho_v2_output.nc"
     
     if not os.path.exists(nc_file):

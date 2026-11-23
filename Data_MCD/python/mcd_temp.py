@@ -177,7 +177,7 @@ else:
 
 extvarkeys[19] = 1
 
-# 移除2D变量处理，因为我们只需要水平风速
+# Skip two-dimensional variables; only horizontal wind speed is needed.
 var_list_2d = []
 if input_dict['is2d'] == 1:
     for idx in input_dict['2dvarkeys']:
@@ -193,8 +193,8 @@ ls_start = input_dict['xdate_start']
 ls_end = input_dict['xdate_end']
 ls_step = input_dict['xdate_step']
 Ls = np.arange(ls_start,ls_end+ls_step,ls_step,dtype=np.float64)
-# 只需要地表1m高度
-zz=[0] # 1米高度
+# Only the level 1 m above the surface is needed.
+zz=[0] # Height: 1 m
 nz = 1
 nLs = len(Ls)
 if input_dict['zkey'] == 4:
@@ -218,17 +218,17 @@ def init_data_dict(var_list,shape):
 
 # call MCD
 data_dict = {}
-var_list_3d = ['temp']  # 只需要东西向和南北向风速
+var_list_3d = ['temp']  # Only east-west and north-south wind speeds are needed.
 
 console.print('extracing 3D vars:',style='var_3d')
 console.print(var_list_3d,style='var_3d')
 
-# 初始化数据字典 - 4维: (经度, 纬度, 时间, Ls)
+# Initialize the data dictionary with dimensions (longitude, latitude, time, Ls).
 data_dict = init_data_dict(var_list_3d,(nlon,nlat,nloc,nLs))
 
 def get_mcd_data(ils):
-    """获取单个 Ls 的数据"""
-    # 初始化当前 Ls 的数据
+    """Get data for one Ls value."""
+    # Initialize data for the current Ls.
     current_data = {}
     for var_name in var_list_3d:
         current_data[var_name] = np.zeros((nlon, nlat, nloc), dtype=np.float64)
@@ -236,12 +236,12 @@ def get_mcd_data(ils):
     for iloc in range(nloc):
         for ilon in range(nlon):
             for ilat in range(nlat):
-                # 调用 MCD 获取数据
+                # Query MCD for data.
                 try:
                     (pres, dens, temp, zonwind, merwind, 
                      meanvar, extvar, seedout, ierr) = \
                     mcd.call_mcd(
-                        input_dict['zkey'], xzs[0],  # 只取地表1m高度
+                        input_dict['zkey'], xzs[0],  # Select only the level 1 m above the surface.
                         lons[ilon], lats[ilat],
                         input_dict['hrkey'],
                         datekey, np.mod(Ls[ils], 360),
@@ -250,12 +250,12 @@ def get_mcd_data(ils):
                         perturkey, seedin, gwlength, extvarkeys
                     )
                     
-                    # 保存 U 和 V 数据
+                    # Save U and V data.
                     current_data['temp'][ilon, ilat, iloc] = temp
                     
                 except Exception as e:
                     print(f"Error at Ls={Ls[ils]}, iloc={iloc}, ilon={ilon}, ilat={ilat}: {e}")
-                    # 填充 NaN
+                    # Fill with NaN.
                     current_data['temp'][ilon, ilat, iloc] = np.nan
     
     return current_data
@@ -269,12 +269,12 @@ end_time = time.time()
 elapsed_time = end_time - start_time
 console.print('elapsed_time of get_mcd_data: %.2f min' %(elapsed_time/60),style='success')
 
-# 合并结果
+# Merge results.
 for i in tqdm(range(nLs), desc='merge results'):
     for var_name in var_list_3d:
         data_dict[var_name][:,:,:,i] = results[i][var_name]
 
-# 检查是否已有相同配置的文件
+# Check for an existing file with the same configuration.
 def save_file_checker(file_path):
     if os.path.exists(file_path):
         console.print('There is already a file: %s' %file_path,style='error')
@@ -282,11 +282,11 @@ def save_file_checker(file_path):
         os.remove(file_path)
     console.print('Preparing save to %s' %file_path)
 
-# 保存数据到netcdf文件
+# Save data to a NetCDF file.
 save_file_checker(os.path.join(save_path,'surface_temp_ds_%s_LS_%.2f-%.2f_rev1.1.nc'\
     %(input_dict['dust'],Ls[0],Ls[-1])))
 
-# 创建xarray数据集
+# Create the xarray dataset.
 nc_save_dict = {}
 for var_name in var_list_3d:
     nc_save_dict[var_name] = (('longitude', 'latitude', 'ut', 'Ls'), data_dict[var_name])
@@ -307,7 +307,7 @@ save_dataset = xr.Dataset(
     }
 )
 
-# 保存到文件
+# Save to a file.
 save_dataset.to_netcdf(
     path=os.path.join(save_path,'surface_temp_ds_%s_LS_%.2f-%.2f_rev1.1.nc'\
     %(input_dict['dust'],Ls[0],Ls[-1]))

@@ -39,7 +39,7 @@ ax.invert_yaxis()
 ax.xaxis.set_major_locator(x_major_locator)
 
 # Add "Seismic Noise" label in top-left corner
-# 修改左上角标签 - 增大字体并添加底板
+# Enlarge the upper-left label and add a background box.
 
 
 dayleng = np.array([0,193,372,515,668])
@@ -64,14 +64,14 @@ ls_values = ['0°', '90°', '180°', '270°']  # Ls values
 ax2 = ax.twinx()
 ax2.set_ylim(ax.get_ylim())
 
-# 设置Ls刻度位置（在季节条带之间）
+# Place Ls ticks between the seasonal bands.
 ls_ticks = [(dayleng[i] + 113) for i in range(len(dayleng)-1)]
 ax2.set_yticks(ls_ticks)
 ax2.set_yticklabels(ls_values, fontsize=14)
 
 plt.text(0.98, 1.04, 'Ls', transform=ax.transAxes, 
          fontsize=16, verticalalignment='top', rotation=0)
-# 调整Ls标签位置，避免与季节标签重叠
+# Position the Ls label to avoid overlap with the season labels.
 ax2.yaxis.set_label_coords(1.08, 0.5)
 
 RMSmap[RMSmap==0] = np.nan

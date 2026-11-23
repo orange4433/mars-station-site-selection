@@ -40,20 +40,20 @@ MCD_FILE = HERE.parent / "mcd_data.nc"
 
 def mars_sol2ls(sol):
     """
-    将火星日(Sol)转换为太阳经度(Ls)
-    使用精确的火星轨道参数计算
+    Convert Mars sol to solar longitude (Ls).
+    Use precise Mars orbital parameters.
     """
-    # 火星轨道参数
-    year_day = 668.6  # 火星年长度（火星日）
-    peri_day = 485.35  # 近日点对应的火星日
-    e_elips = 0.09340  # 轨道偏心率
-    timeperi = 1.90258341759902  # 近日点经度（弧度）
+    # Mars orbital parameters
+    year_day = 668.6  # Length of a Mars year in sols
+    peri_day = 485.35  # Sol at perihelion
+    e_elips = 0.09340  # Orbital eccentricity
+    timeperi = 1.90258341759902  # Longitude of perihelion in radians
     
-    # 计算平近点角
+    # Calculate the mean anomaly.
     M = 2 * np.pi * (sol - peri_day) / year_day
     M = M % (2 * np.pi)
     
-    # 开普勒方程求解（牛顿迭代法）
+    # Solve Kepler's equation with Newton iteration.
     E = M
     for _ in range(10):
         delta_E = (E - e_elips * np.sin(E) - M) / (1 - e_elips * np.cos(E))
@@ -61,25 +61,25 @@ def mars_sol2ls(sol):
         if abs(delta_E) < 1e-7:
             break
     
-    # 计算真近点角
+    # Calculate the true anomaly.
     true_anomaly = 2 * np.arctan(np.sqrt((1 + e_elips) / (1 - e_elips)) * np.tan(E / 2))
     
-    # 计算太阳经度Ls
+    # Calculate solar longitude Ls.
     Ls = (true_anomaly - timeperi) % (2 * np.pi)
     return np.degrees(Ls)
 
 def insight_sol_to_mars_day(insight_sol):
     """
-    将Insight Sol转换为火星年中的实际日数
-    Insight着陆日对应火星年的第555天
+    Convert InSight sol to the day within a Mars year.
+    InSight landed on day 555 of the Mars year.
     """
-    # Insight Sol 0 对应火星年的第555天
+    # InSight sol 0 corresponds to day 555 of the Mars year.
     mars_day = insight_sol + 555
     
-    # 火星年长度
+    # Length of a Mars year
     mars_year_length = 668.6
     
-    # 如果超过一年，取模
+    # Wrap values modulo one year.
     if mars_day > mars_year_length:
         mars_day = mars_day % mars_year_length
     
@@ -89,11 +89,11 @@ def insight_sol_to_mars_day(insight_sol):
 freq_list = [0.05, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5, 6, 7, 8]
 freq_list2 = [0.2,1]
 SEISMIC_PARAMS = {
-    'channel': 'Z',          # 处理通道
-    'spec_window': 512,      # 频谱分析窗口
-    'noverlap': 256,         # 频谱重叠样本
-    'clim': (-220, -170),    # 颜色映射范围
-    'freq_ticks': [0.1, 0.3, 1, 3, 8]  # 频率刻度
+    'channel': 'Z',          # Channel to process
+    'spec_window': 512,      # Spectral analysis window
+    'noverlap': 256,         # Number of overlapping samples
+    'clim': (-220, -170),    # Colormap limits
+    'freq_ticks': [0.1, 0.3, 1, 3, 8]  # Frequency ticks
 }
 
 class lmst(object):
@@ -183,7 +183,7 @@ def c2lmst(a):
     return aa
 
 class WindProcessor:
-    """风速数据时空处理器 - 适配mcd_data.nc格式"""
+    """Process wind-speed data in space and time using the mcd_data.nc format."""
     
     def __init__(self, nc_path: str):
         nc_path = Path(nc_path).resolve()
@@ -195,12 +195,12 @@ class WindProcessor:
             os.chdir(original_directory)
         self.sol_min = 114
         self.sol_max = 794
-        self._cache = {}  # 位置数据缓存
+        self._cache = {}  # Cache for location-specific data
         self._precompute_sol_data()
     
     def _precompute_sol_data(self):
-        """预计算所有Sol的风速数据"""
-        # 计算每个Sol对应的Ls值
+        """Precompute wind-speed data for all sols."""
+        # Calculate Ls for each sol.
         self.sol_values = np.arange(self.sol_min, self.sol_max + 1)
         self.ls_values = []
         
@@ -209,41 +209,41 @@ class WindProcessor:
             ls = mars_sol2ls(mars_day)
             self.ls_values.append(ls)
         
-        # 原始数据的Ls值
+        # Ls values in the original data
         self.original_ls = self.dataset['Ls'][:]
     
     def get_wind_profile(self, lat: float, lon: float) -> Tuple[np.ndarray, np.ndarray]:
-        """获取指定位置风速数据"""
-        # 检查缓存
+        """Get wind-speed data at the specified location."""
+        # Check the cache.
         cache_key = f"{lat}_{lon}"
         if cache_key in self._cache:
             return self._cache[cache_key]
         
-        # 查找最近网格点
+        # Find the nearest grid point.
         lats = self.dataset['latitude'][:]
         lons = self.dataset['longitude'][:]
         
         lat_idx = np.abs(lats - lat).argmin()
         lon_idx = np.abs(lons - lon).argmin()
         
-        # 获取所有Sol的风速数据
+        # Get wind-speed data for all sols.
         u_data = np.zeros((len(self.sol_values), 48))
         v_data = np.zeros((len(self.sol_values), 48))
         
         for i, sol in enumerate(self.sol_values):
-            # 找到最接近的Ls索引
+            # Find the nearest Ls index.
             target_ls = self.ls_values[i]
             ls_idx = np.argmin(np.abs(self.original_ls - target_ls))
             
-            # 获取该位置和Ls对应的风速数据
+            # Get wind-speed data for the location and Ls.
             u_data[i, :] = self.dataset['U'][lon_idx, lat_idx, :, ls_idx]
             v_data[i, :] = self.dataset['V'][lon_idx, lat_idx, :, ls_idx]
         
-        # 应用地方时校正
-        shift_hours = int(lon / 15)  # 经度转换为小时偏移
-        shift_points = 0*shift_hours * 2  # 每半小时一个点
+        # Apply the local-time correction.
+        shift_hours = int(lon / 15)  # Convert longitude to an hour offset.
+        shift_points = 0*shift_hours * 2  # One point per half hour
         
-        # 对每个Sol的数据进行滚动
+        # Roll the data for each sol.
         adjusted_u = np.zeros_like(u_data)
         adjusted_v = np.zeros_like(v_data)
         
@@ -251,36 +251,36 @@ class WindProcessor:
             adjusted_u[sol_idx] = np.roll(u_data[sol_idx], -shift_points)
             adjusted_v[sol_idx] = np.roll(v_data[sol_idx], -shift_points)
         
-        # 将数据展平为连续时间序列
+        # Flatten into a continuous time series.
         u = adjusted_u.flatten()
         v = adjusted_v.flatten()
         print(len(u))
-        # 缓存结果
+        # Cache the result.
         self._cache[cache_key] = (u, v)
         return u, v
 
 
 
-# 绘制单个点的风速变化热力图
+# Plot a wind-speed heatmap for one location.
 def figure(wind_speeds, min_value, max_value, u, integral, title):
-    data = wind_speeds.reshape(-1, 48)  # 假设每小时有48个时间步长
+    data = wind_speeds.reshape(-1, 48)  # Assume 48 time steps per hour.
     
-    # 创建一个更大的数组，其中包含你的数据，并在其他部分填充NaN值
-    full_data = np.full((1001, 48), np.nan)  # 创建一个1300x48的全NaN数组
-    full_data[114:114+len(data), :] = data  # 将你的数据复制到全NaN数组的相应位置
+    # Create a larger array containing the data, with NaN elsewhere.
+    full_data = np.full((1001, 48), np.nan)  # Create a 1300-by-48 array filled with NaN.
+    full_data[114:114+len(data), :] = data  # Copy the data into the corresponding positions of the NaN array.
     
-    # 使用matplotlib绘制热力图
+    # Plot the heatmap with matplotlib.
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_ylim(0, 1000)
     
-    # cmap参数代表色彩映射
+    # cmap specifies the colormap.
     sol_range = [1, 1000]
     norm = colors.Normalize(vmin=min_value, vmax=max_value, clip=True)
     scalar_mappable = cm.ScalarMappable(norm=norm, cmap=plt.get_cmap('plasma'))
-    scalar_mappable.set_array([])  # 设置一个空数组
+    scalar_mappable.set_array([])  # Initialize an empty array.
     im = ax.imshow(full_data, norm=norm, cmap='plasma', aspect=u)
     
-    # 添加Colorbar
+    # Add a colorbar.
     cbar = plt.colorbar(scalar_mappable, ax=ax)
     cbar.set_label('Wind Speed (m/s)', fontdict={'family': 'Times New Roman', 'fontsize': 14})
     for label in cbar.ax.get_yticklabels():
@@ -290,19 +290,19 @@ def figure(wind_speeds, min_value, max_value, u, integral, title):
     f1 = 16
     f2 = 16
     
-    # 显示颜色条
+    # Show the colorbar.
     plt.xlabel("hour")
     plt.ylabel("sol")
     ticks = np.arange(0, 48, 2)
     plt.xticks(ticks=ticks, labels=[i-48 if i > 47 else i for i in ticks])
     plt.xlabel('LMST hour', fontdict={'family': 'Arial', 'fontsize': f2})
-    plt.xlim(0, 47)  # 修改这里以适应48个点
+    plt.xlim(0, 47)  # Adjust for 48 points.
     original_xticks = plt.xticks()[0]
 
-    # 计算新的y轴刻度位置（乘以5倍）
+    # Calculate new y-axis tick positions by multiplying by 5.
     new_xticks1 = original_xticks / 2
     new_xticks = [int(new_xticks1[i]) for i in range(len(new_xticks1))]
-    # 设置新的y轴刻度位置
+    # Set the new y-axis tick positions.
     plt.xticks(original_xticks, new_xticks)
     
     plt.xticks(fontname="Times New Roman", fontsize=f1)
@@ -317,10 +317,10 @@ def figure(wind_speeds, min_value, max_value, u, integral, title):
 def calc_psd(data, fs):
     data = np.asarray(data)
     dt = 0.05
-    segment_length = int(25.6 / dt)  # 例如，25.6秒的时间段长度
-    noverlap = int(segment_length * 0.5)  # 50%的重叠
-    #nfft = 4096  # 零填充到4096个样本
-    window = windows.hann(segment_length)  # 汉宁窗
+    segment_length = int(25.6 / dt)  # For example, a 25.6-second window
+    noverlap = int(segment_length * 0.5)  # 50% overlap
+    #nfft = 4096  # Zero-pad to 4096 samples.
+    window = windows.hann(segment_length)  # Hann window
     
     freq, psd = welch(
         data,
@@ -335,16 +335,16 @@ def calc_psd(data, fs):
     return freq, psd
 
 class SeismicAdjuster:
-    """基于多频段风速特征的地震信号修正器"""
+    """Correct seismic signals using wind-speed features in multiple frequency bands."""
     
     def __init__(self, ref_day: int, target_day: int):
         self.ref_day = ref_day
         self.target_day = target_day
         
-        # 定义频率分界点
+        # Define frequency-band boundaries.
         self.freq_breaks = freq_list
         
-        # 加载17个插值器
+        # Load 17 interpolators.
         self.interpolators = [[] for i in range(3)]
         for i in range(len(self.freq_breaks)-1):
             for j in range(3):
@@ -363,51 +363,51 @@ class SeismicAdjuster:
                 interp1d(data[:,0], data[:,1], fill_value="extrapolate")
             )
 
-# 增强版地震信号修正器（包含时间截取）
+# Enhanced seismic signal corrector with time-window selection
 # --------------------------
 class EnhancedSeismicAdjuster(SeismicAdjuster):
-    """包含时间对齐的增强修正器"""
+    """Enhanced signal corrector with time alignment."""
     
     def align_daily_signal(self, stream: Stream) -> Tuple[np.ndarray, float]:
-        """对齐到火星日00:00-24:00"""
-        # 获取信号基本信息
+        """Align data to the Mars local-time interval 00:00-24:00."""
+        # Get basic signal information.
         tr = stream.select(channel=f"BH{SEISMIC_PARAMS['channel']}")[0]
         delta = tr.stats.delta
         starttime_lmst = c2lmst(tr.stats.starttime)
         start_time_utc = tr.stats.starttime
-        # 计算当日火星时间范围
-        # 创建一个lmst对象代表我们感兴趣的起始时间(当天的00:00 LMST)
+        # Calculate the Mars local-time range for the day.
+        # Create an LMST object for the start of the day (00:00 LMST).
         target_start_lmst = lmst(sol=starttime_lmst.sol+1, hour=0, minute=0, sec=0)
         target_start_utc = target_start_lmst.conv2utc()
 
-        # 同样创建一个代表当天结束时间(24:00 LMST)的对象
+        # Create an LMST object for the end of the day (24:00 LMST).
         target_end_lmst = lmst(sol=starttime_lmst.sol+1, hour=24, minute=0, sec=0)
         target_end_utc = target_end_lmst.conv2utc()
 
-        # 根据目标时间转换为样本索引
+        # Convert target times to sample indices.
         start_idx = int((target_start_utc - start_time_utc) / delta)
         end_idx = int((target_end_utc - start_time_utc) / delta)
         
-        # 截取并返回
+        # Slice and return.
         return tr.data[start_idx:end_idx], delta
 
     def corrected_adjust(self, ref_stream: Stream,
                         ref_wind: np.ndarray, target_wind: np.ndarray, 
                         gap: float) -> np.ndarray:
-        """多频段修正"""
+        """Apply correction in multiple frequency bands."""
         ref_signal, delta = self.align_daily_signal(ref_stream)
         
         adjusted_segments = [[] for i in range(len(freq_list)-1)]
         samples_per_segment = int(3600*gap / delta)
         
-        # 每个时间窗口独立处理所有频段
+        # Process all frequency bands independently in each time window.
         for seg in range(int(6/gap)):
             start = seg * samples_per_segment
             end = (seg + 1) * samples_per_segment
             
-            # 初始化该时段的修正信号
+            # Initialize the corrected signal for this time window.
             seg_adjusted = []
-            # 遍历所有频段插值器
+            # Iterate over all frequency-band interpolators.
             for i, interp in enumerate(self.interpolators[0]):
                 ref_factor = 10**interp(ref_wind[int(seg*len(ref_wind)/int(24/gap))])
                 target_factor = 10**interp(target_wind[int(seg*len(target_wind)/int(24/gap))])
@@ -418,9 +418,9 @@ class EnhancedSeismicAdjuster(SeismicAdjuster):
             start = seg * samples_per_segment
             end = (seg + 1) * samples_per_segment
             
-            # 初始化该时段的修正信号
+            # Initialize the corrected signal for this time window.
             seg_adjusted = []
-            # 遍历所有频段插值器
+            # Iterate over all frequency-band interpolators.
             for i, interp in enumerate(self.interpolators[1]):
                 ref_factor = 10**interp(ref_wind[int(seg*len(ref_wind)/int(24/gap))])
                 target_factor = 10**interp(target_wind[int(seg*len(target_wind)/int(24/gap))])
@@ -431,9 +431,9 @@ class EnhancedSeismicAdjuster(SeismicAdjuster):
             start = seg * samples_per_segment
             end = (seg + 1) * samples_per_segment
             
-            # 初始化该时段的修正信号
+            # Initialize the corrected signal for this time window.
             seg_adjusted = []
-            # 遍历所有频段插值器
+            # Iterate over all frequency-band interpolators.
             for i, interp in enumerate(self.interpolators[2]):
                 ref_factor = 10**interp(ref_wind[int(seg*len(ref_wind)/int(24/gap))])
                 target_factor = 10**interp(target_wind[int(seg*len(target_wind)/int(24/gap))])
@@ -445,20 +445,20 @@ class EnhancedSeismicAdjuster(SeismicAdjuster):
     def corrected_adjust2(self, ref_stream: Stream,
                         ref_wind: np.ndarray, target_wind: np.ndarray, 
                         gap: float) -> np.ndarray:
-        """多频段修正"""
+        """Apply correction in multiple frequency bands."""
         ref_signal, delta = self.align_daily_signal(ref_stream)
         
         adjusted_segments = [[] for i in range(len(freq_list2)-1)]
         samples_per_segment = int(3600*gap / delta)
         
-        # 每个时间窗口独立处理所有频段
+        # Process all frequency bands independently in each time window.
         for seg in range(int(6/gap)):
             start = seg * samples_per_segment
             end = (seg + 1) * samples_per_segment
             
-            # 初始化该时段的修正信号
+            # Initialize the corrected signal for this time window.
             seg_adjusted = []
-            # 遍历所有频段插值器
+            # Iterate over all frequency-band interpolators.
             for i, interp in enumerate(self.interpolators2[0]):
                 ref_factor = 10**interp(ref_wind[int(seg*len(ref_wind)/int(24/gap))])
                 target_factor = 10**interp(target_wind[int(seg*len(target_wind)/int(24/gap))])
@@ -470,9 +470,9 @@ class EnhancedSeismicAdjuster(SeismicAdjuster):
             start = seg * samples_per_segment
             end = (seg + 1) * samples_per_segment
             
-            # 初始化该时段的修正信号
+            # Initialize the corrected signal for this time window.
             seg_adjusted = []
-            # 遍历所有频段插值器
+            # Iterate over all frequency-band interpolators.
             for i, interp in enumerate(self.interpolators2[1]):
                 ref_factor = 10**interp(ref_wind[int(seg*len(ref_wind)/int(24/gap))])
                 target_factor = 10**interp(target_wind[int(seg*len(target_wind)/int(24/gap))])
@@ -483,9 +483,9 @@ class EnhancedSeismicAdjuster(SeismicAdjuster):
             start = seg * samples_per_segment
             end = (seg + 1) * samples_per_segment
             
-            # 初始化该时段的修正信号
+            # Initialize the corrected signal for this time window.
             seg_adjusted = []
-            # 遍历所有频段插值器
+            # Iterate over all frequency-band interpolators.
             for i, interp in enumerate(self.interpolators2[2]):
                 ref_factor = 10**interp(ref_wind[int(seg*len(ref_wind)/int(24/gap))])
                 target_factor = 10**interp(target_wind[int(seg*len(target_wind)/int(24/gap))])
@@ -499,20 +499,20 @@ SEISMIC_DATA_DIR = Path(r"C:\Data and Code\File 6—Data_Insight_Seismic")
 
 import math
 
-# 火星的平均半径 (km)
-R = 3389.5  # 平均半径
+# Mean Mars radius in km
+R = 3389.5  # Mean radius
 
 def haversine(point1, point2):
     """
-    计算两个地理坐标点之间的距离（Haversine公式）
-    
-    参数:
-        point1: (纬度1, 经度1) 单位：度
-        point2: (纬度2, 经度2) 单位：度
-        
-    返回:
-        distance: 两点之间的距离 (km)
-        angle_distance: 两点之间的角度距离 (弧度)
+    Calculate the distance between two geographic points with the Haversine formula.
+
+    Parameters:
+        point1: (latitude1, longitude1), in degrees.
+        point2: (latitude2, longitude2), in degrees.
+
+    Returns:
+        distance: Distance between the points in km.
+        angle_distance: Angular distance in radians.
     """
     lat1, lon1 = math.radians(point1[0]), math.radians(point1[1])
     lat2, lon2 = math.radians(point2[0]), math.radians(point2[1])
@@ -524,11 +524,11 @@ def haversine(point1, point2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     
     distance = R * c
-    angle_distance = c  # 角度距离（大圆距离的角度）
+    angle_distance = c  # Angular great-circle distance
     
     return angle_distance
 
-# 标签是地震仪可取点
+# Candidate seismometer locations
 seismometer_points = [
     (-48.75, -45.0),
     (-7.5, -5.625),
@@ -538,7 +538,7 @@ seismometer_points = [
     (22.5, 180)
 ]
 
-# 地震可能发生的点
+# Possible marsquake locations
 earthquake_points = [
     (10, -105),
     (35, 90),
@@ -555,65 +555,65 @@ earthquake_points = [
 ]
 
 class SpectrumVisualizer:
-    """频谱对比可视化工具"""
+    """Visualize and compare spectra."""
     
     @staticmethod
     def plot_comparison(target_signals1: list,target_signals2,target_signals3,hour,ratio,ratio1,ratio2,Mw, sample_rate: float = 20.0):
-        """四图对比显示"""
+        """Display a four-panel comparison."""
         
         fig = plt.figure(figsize=(14, 12))
 
-        # 使用 GridSpec 定义布局：
-        # 第一行分为两列，其中第一列占 1/3 宽度，第二列留空（只用第一列）
-        # 第二行跨全部宽度
+        # Define the layout with GridSpec:
+        # Use the left third of the first row; leave the rest empty.
+        # The second row spans the full width.
         gs = GridSpec(2, 2, figure=fig, width_ratios=[5, 1], height_ratios=[1, 2])
 
-        # axes[0]：占据第一行的第一列（共三列中的一列 → 占 1/3 宽度）
-        ax0 = fig.add_subplot(gs[0, 0])  # 只使用第一行第一列
+        # axes[0] occupies the first of three columns in the first row (one-third width).
+        ax0 = fig.add_subplot(gs[0, 0])  # Use only the first column of the first row.
 
-        # axes[1]：占据第二行全部三列（全宽）
-        ax1 = fig.add_subplot(gs[1, :])  # 跨越所有列
+        # axes[1] spans all three columns in the second row.
+        ax1 = fig.add_subplot(gs[1, :])  # Span all columns.
         
-        # 加载地震数据（新增部分）
+        # Load the seismic data.
         seis_data = np.load(HERE / 'event_1133_spectrogram.npz')
-        seis_f = seis_data['frequencies']  # 原始地震频率轴（Hz）
-        seis_t = seis_data['times']        # 原始地震时间轴（秒）
-        seis_Sxx = seis_data['power']      # 原始地震功率数据（dB/Hz）
+        seis_f = seis_data['frequencies']  # Original seismic frequency axis (Hz)
+        seis_t = seis_data['times']        # Original seismic time axis (seconds)
+        seis_Sxx = seis_data['power']      # Original seismic power data (dB/Hz)
         print(seis_Sxx.shape) 
         def overlay_seismic(sim_t, sim_f, sim_Sxx):
-            """在指定小时位置叠加地震数据"""
-            # 1. 计算地震数据的时间偏移
-            target_origin = hour * 3600 + 300  # 转换为秒
+            """Overlay seismic data at the specified hour."""
+            # 1. Calculate the seismic data time offset.
+            target_origin = hour * 3600 + 300  # Convert to seconds.
             
-            # 2. 计算地震数据在模拟时间轴中的位置
+            # 2. Locate the seismic data on the simulation time axis.
             seis_start = target_origin + seis_t[0]
             seis_end = target_origin + seis_t[-1]
             
-            # 3. 确定叠加范围（仅处理重叠部分）
+            # 3. Determine the overlap interval.
             overlap_start = max(sim_t[0], seis_start)
             overlap_end = min(sim_t[-1], seis_end)
             
             if overlap_start > overlap_end:
                 print(1)
-                return sim_t, sim_f, sim_Sxx  # 无重叠时返回原数据
+                return sim_t, sim_f, sim_Sxx  # Return the original data if there is no overlap.
             
-            # 4. 时间轴索引计算
+            # 4. Calculate time-axis indices.
             seis_idx_start = np.searchsorted(seis_t, overlap_start - target_origin)
             seis_idx_end = np.searchsorted(seis_t, overlap_end - target_origin)
             sim_idx_start = np.searchsorted(sim_t, overlap_start)
             sim_idx_end = np.searchsorted(sim_t, overlap_end)
             
-            # 5. 频率轴对齐（地震数据截断到模拟频率范围）
+            # 5. Trim the seismic frequencies to the simulated frequency range.
             freq_mask = (seis_f >= sim_f[0]) & (seis_f <= sim_f[-1])
             valid_seis_f = seis_f[freq_mask]
             valid_seis_Sxx = seis_Sxx[freq_mask, :]
             
-            # 6. 创建插值函数（频率轴）
+            # 6. Create a frequency-axis interpolator.
             interp_Sxx = interp1d(seis_f, seis_Sxx, axis=0, 
                                  bounds_error=False, 
                                  fill_value=np.nan)(sim_f)
             interp_Sxx = (10**(interp_Sxx / 10))*((ratio)**2)
-            # 7. 数据叠加（直接覆盖）
+            # 7. Overlay data by direct replacement.
             modified_Sxx = sim_Sxx.copy()
             modified_Sxx[:, sim_idx_start:sim_idx_end] = np.maximum(
                 modified_Sxx[:, sim_idx_start:sim_idx_end],
@@ -623,8 +623,8 @@ class SpectrumVisualizer:
             return sim_t, sim_f, modified_Sxx
         
         
-        # 计算模拟频谱2
-        # 处理模拟信号
+        # Calculate the second simulated spectrum.
+        # Process the simulated signal.
         all_freqs = []
         all_Sxx = []
         for sig_pair in target_signals1:
@@ -632,28 +632,28 @@ class SpectrumVisualizer:
                 sig = sig_pair[i]
                 sig = np.array(sig)
                 f, t, Sxx = SpectrumVisualizer._compute_spectrogram(sig, sample_rate)
-                mask = (f >= freq_list[i]) & (f < freq_list[i + 1])  # 根据当前txt的频率范围生成mask
+                mask = (f >= freq_list[i]) & (f < freq_list[i + 1])  # Build a mask for the frequency range in the current text file.
                 all_freqs.append(f[mask])
                 all_Sxx.append(Sxx[mask, :])
         
-        # 合并频谱
+        # Merge spectra.
         merged_freq = np.concatenate(all_freqs)
         merged_Sxx = np.vstack(all_Sxx)
         sorted_idx = np.argsort(merged_freq)
         merged_freq = merged_freq[sorted_idx]
         merged_Sxx = merged_Sxx[sorted_idx, :]
         
-        # 在合并频谱后添加：
+        # After merging the spectra:
         merged_t, merged_f, merged_Sxx = overlay_seismic(t, merged_freq, merged_Sxx)
         
-        # 高斯平滑（保持原有逻辑）
+        # Apply Gaussian smoothing using the existing logic.
         merged_Sxx = gaussian_filter1d(merged_Sxx, sigma=0.1, axis=0)
         
-        # 定义目标时间范围（凌晨3:50到4:30）
+        # Define the target time interval, 03:50 to 04:30.
         start_time = hour * 3600  # 4:00 AM in seconds
         end_time = hour * 3600 + 20 * 60     # 4:30 AM in seconds
         
-        # 找到目标时间范围内的索引
+        # Find indices within the target time interval.
         time_mask = (merged_t >= start_time) & (merged_t <= end_time)
         merged_t = merged_t[time_mask]
         merged_Sxx = merged_Sxx[:, time_mask]
@@ -663,19 +663,19 @@ class SpectrumVisualizer:
         for sig_pair in target_signals2:
             for i in range(0,1):
                 sig = np.array(sig_pair[i])
-                # 对信号求导
+                # Differentiate the signal.
                 
                 all_waveforms.append(sig)
         key_times = {
             "P Wave": (start_time + 229+300)/3600,  
             "S Wave": (start_time + 405+300)/3600  
         }
-        # 叠加所有信号
+        # Overlay all signals.
         combined_waveform = np.sum(all_waveforms, axis=0)
         #combined_waveform = target_signals1[0][10]
         #combined_waveform = np.gradient(combined_waveform, 1/sample_rate)
         print(len(combined_waveform))
-        # 绘制波形图
+        # Plot the waveform.
         waveform = combined_waveform[int((start_time+50)*20):int((end_time+50)*20)]
         print(len(waveform))
         waveform_t = np.linspace(start_time*20, end_time*20, len(waveform))
@@ -685,12 +685,12 @@ class SpectrumVisualizer:
         part1 = loaded_data_detrended[:split_point]
         part2 = loaded_data_detrended[split_point:]
 
-        # 应用不同的比例因子
+        # Apply different scale factors.
         print(ratio,"我")
         part1_scaled = part1 * ratio
         part2_scaled = part2 * ratio
 
-        # 合并两个处理后的数组
+        # Merge the two processed arrays.
         scaled_data_detrended = np.concatenate((part1_scaled, part2_scaled))
         
         waveform += scaled_data_detrended
@@ -701,12 +701,12 @@ class SpectrumVisualizer:
         #ax0.set_title(f"Waveform Overlay with Seismic Signal (hour:{hour:02d}:00 , Mw:{Mw})", fontsize=20)
         start_time_hours = hour-1 + 60 / 60  # 4:00 AM in hours
         end_time_hours = hour + 20 / 60     # 4:30 AM in hours
-         # 反变换
-         # 将 dB/Hz 转换回幅度平方
+         # Inverse transform
+         # Convert dB/Hz back to squared amplitude.
         ax0.set_xlim(start_time_hours, end_time_hours)
         
-        # 设置x轴刻度和标签
-        xticks = np.arange(start_time_hours, end_time_hours + 0.1, float(10/60))  # 每10分钟一标注
+        # Set x-axis ticks and labels.
+        xticks = np.arange(start_time_hours, end_time_hours + 0.1, float(10/60))  # Label every 10 minutes.
         print(xticks)
         
         ax0.set_xticks(xticks)
@@ -716,10 +716,10 @@ class SpectrumVisualizer:
         ax0.axvline(x=float((hour*3600 + 405+50)/3600), color='orange', linestyle=':', linewidth=2, label='S Wave Arrival')
         #ax0.legend(loc='upper right',fontsize = scale-4)
         ax0.set_ylabel("Amplitude(m/s)", fontsize=scale)
-        # 设置 Y 轴 offset text（即 1e-9）的字体大小
-        ax0.yaxis.offsetText.set_fontsize(scale-2)  # 或 set_size()
-        # 设置刻度标签的字体大小
-        ax0.tick_params(axis='both', which='major', labelsize=scale-2)  # 控制 x 和 y 的主刻度标签
+        # Set the y-axis offset-text font size (for example, 1e-9).
+        ax0.yaxis.offsetText.set_fontsize(scale-2)  # Or use set_size().
+        # Set the tick-label font size.
+        ax0.tick_params(axis='both', which='major', labelsize=scale-2)  # Configure major tick labels on both axes.
         
         
         
@@ -729,7 +729,7 @@ class SpectrumVisualizer:
         for sig_pair in target_signals1:
             for i in range(0,17):
                 sig = np.array(sig_pair[i])
-                # 对信号求导
+                # Differentiate the signal.
                 combined_waveform = sig
                 waveform = combined_waveform[int((start_time+50)*20):int((end_time+50)*20)]
                 print(len(waveform))
@@ -740,11 +740,11 @@ class SpectrumVisualizer:
                 part1 = loaded_data_detrended[:split_point]
                 part2 = loaded_data_detrended[split_point:]
 
-                # 应用不同的比例因子
+                # Apply different scale factors.
                 part1_scaled = part1 * ratio
                 part2_scaled = part2 * ratio
 
-                # 合并两个处理后的数组
+                # Merge the two processed arrays.
                 scaled_data_detrended = np.concatenate((part1_scaled, part2_scaled))
                 print(len(scaled_data_detrended))
                 print('张雨晨猪猪猪')
@@ -760,25 +760,25 @@ class SpectrumVisualizer:
                 waveform1 = np.concatenate((waveform_pre, waveform))
                 waveform1 = np.concatenate((waveform1, waveform_pro))
                 f, t, Sxx = SpectrumVisualizer._compute_spectrogram(waveform1, fs=sample_rate)
-                mask = (f >= 0.9*freq_list[i]) & (f < 1.1*freq_list[i + 1])   # 根据当前txt的频率范围生成mask
+                mask = (f >= 0.9*freq_list[i]) & (f < 1.1*freq_list[i + 1])   # Build a mask for the frequency range in the current text file.
                 all_freqs.append(f[mask])
                 all_Sxx.append(Sxx[mask, :])
         
         
-        # 合并频谱
+        # Merge spectra.
         merged_freq = np.concatenate(all_freqs)
         merged_Sxx = np.vstack(all_Sxx)
         sorted_idx = np.argsort(merged_freq)
         merged_freq = merged_freq[sorted_idx]
         merged_Sxx = merged_Sxx[sorted_idx, :]
-        # 叠加所有信号
+        # Overlay all signals.
         #combined_waveform = np.sum(all_waveforms, axis=0)
         #combined_waveform = target_signals1[0][10]
         #combined_waveform = np.gradient(combined_waveform, 1/sample_rate)
         
         #waveform2 = combined_waveform[int((start_time-20)*20):int((end_time+20)*20)]
         #print(waveform1[100:200]==waveform2[100:200])
-        # 绘制频谱图
+        # Plot the spectrogram.
         #print(merged_t)
         merged_t = t+hour*3600 -20
         SpectrumVisualizer._plot_spectrum(ax1, merged_t, merged_freq, merged_Sxx, hour)
@@ -789,13 +789,13 @@ class SpectrumVisualizer:
         plt.close(fig)
 
     def _get_freq_mask(self, f: np.ndarray) -> np.ndarray:
-        """根据当前插值器的频率范围生成mask"""
+        """Build a mask for the frequency range of the current interpolator."""
         low = self.freq_breaks[i]
         high = self.freq_breaks[i+1]
         return (f >= low) & (f <= high)    
     @staticmethod
     def _compute_spectrogram(data: np.ndarray, fs: float) -> Tuple[np.ndarray, ...]:
-        """计算频谱图"""
+        """Calculate the spectrogram."""
         return spectrogram(data, fs=fs,
                           window=windows.hamming(SEISMIC_PARAMS['spec_window']),
                           nperseg=SEISMIC_PARAMS['spec_window'],
@@ -804,19 +804,19 @@ class SpectrumVisualizer:
 
     @staticmethod
     def _plot_spectrum(ax: plt.Axes, t: np.ndarray, f: np.ndarray, Sxx: np.ndarray,hour):
-        """绘制单个频谱图"""
-        db = 10 * np.log10(Sxx[1:])  # 排除0Hz
+        """Plot a single spectrogram."""
+        db = 10 * np.log10(Sxx[1:])  # Exclude 0 Hz.
         pc = ax.pcolormesh(t/3600, np.log10(f[1:]), db, cmap='plasma', shading='auto')
         
-        # 定义目标时间范围（凌晨3:50到4:30）
+        # Define the target time interval, 03:50 to 04:30.
         start_time_hours = hour-1 + 60 / 60  # 3:50 AM in hours
         end_time_hours = hour + 20 / 60     # 4:30 AM in hours
         
-        # 设置x轴范围
+        # Set the x-axis limits.
         ax.set_xlim(start_time_hours, end_time_hours)
         
-        # 设置x轴刻度和标签
-        xticks = np.arange(start_time_hours, end_time_hours + 0.1, float(10/60))  # 每10分钟一标注
+        # Set x-axis ticks and labels.
+        xticks = np.arange(start_time_hours, end_time_hours + 0.1, float(10/60))  # Label every 10 minutes.
         #print(xticks)
         ax.set_xticks(xticks)
         ax.set_xticklabels([f"{int(h):02d}:{int((h % 1) * 61):02d}" for h in xticks])
@@ -824,14 +824,14 @@ class SpectrumVisualizer:
         ax.set_ylim(np.log10([SEISMIC_PARAMS['freq_ticks'][0], SEISMIC_PARAMS['freq_ticks'][-1]]))
         ax.set_yticks(np.log10(SEISMIC_PARAMS['freq_ticks']))
         ax.set_yticklabels([str(f) for f in SEISMIC_PARAMS['freq_ticks']])
-        # 设置刻度标签的字体大小
-        ax.tick_params(axis='both', which='major', labelsize=scale-2)  # 控制 x 和 y 的主刻度标签
+        # Set the tick-label font size.
+        ax.tick_params(axis='both', which='major', labelsize=scale-2)  # Configure major tick labels on both axes.
         ax.set_xlabel("Local Hour (h)", fontsize=scale)
         ax.set_ylabel("Frequency (Hz)", fontsize=scale)
         #ax.set_title(title, fontsize=20)
         pc.set_clim(SEISMIC_PARAMS['clim'])
         
-        # 添加颜色条（移动到右侧并缩小）
+        # Move the colorbar to the right and reduce its size.
         cbar = plt.colorbar(pc, ax=ax, orientation='vertical', pad=0.04, shrink=0.6)
         cbar.set_label('Power Spectral Density (dB)', fontsize=scale, labelpad=15)
         cbar.ax.tick_params(labelsize=scale-2)
@@ -847,7 +847,7 @@ def compare_asd(nc_file_path, lat, lon,day,hour,earthquake,Mw):
     channel = 'Z'
     ref_tr = st_disp.select(channel=f'BH{channel}')
     D_vel = ref_tr[0].data
-    wind_proc = WindProcessor(str(MCD_FILE))#PCM风速
+    wind_proc = WindProcessor(str(MCD_FILE))# PCM wind speed
     adjuster = EnhancedSeismicAdjuster(ref_day, day)
     ref_stream = read(str(main_file))
     velocity_file = SEISMIC_DATA_DIR / "Data_Step5_Rotate" / f"LMST_{ref_day:04d}.mseed"
@@ -858,19 +858,19 @@ def compare_asd(nc_file_path, lat, lon,day,hour,earthquake,Mw):
     sst = ref_stream2.select(channel='BHZ')
     u_ref, v_ref = wind_proc.get_wind_profile(4.5, 135.6)
     u_target, v_target = wind_proc.get_wind_profile(lat, lon)
-    # 执行信号修正
+    # Apply the signal correction.
     adjusted = adjuster.corrected_adjust(
         ref_stream,
         np.sqrt(u_ref**2 + v_ref**2)[(ref_day-113)*48:(ref_day-113+1)*48],
         np.sqrt(u_target**2 + v_target**2)[(day-113)*48:(day-113+1)*48],
         0.5
-    )#它有17个，分别是按照17个频段进行拟合的
+    )# There are 17 fits, one for each frequency band.
     adjusted2 = adjuster.corrected_adjust2(
         sst,
         np.sqrt(u_ref**2 + v_ref**2)[(ref_day-113)*48:(ref_day-113+1)*48],
         np.sqrt(u_target**2 + v_target**2)[(day-113)*48:(day-113+1)*48],
         0.5
-    )#它有1个，分别是按照1个频段进行拟合的(早中晚）
+    )# One fit for a single frequency band, with morning/day/evening periods.
     
     print('开始')
     print(np.mean(adjusted2))
@@ -881,12 +881,12 @@ def compare_asd(nc_file_path, lat, lon,day,hour,earthquake,Mw):
         np.sqrt(u_ref**2 + v_ref**2)[(ref_day-113)*48:(ref_day-113+1)*48],
         np.sqrt(u_target**2 + v_target**2)[(day-113)*48:(day-113+1)*48],
         0.5
-    )#它有1个，分别是按照1个频段进行拟合的(早中晚）
+    )# One fit for a single frequency band, with morning/day/evening periods.
     wind_speeds = np.sqrt(u_target**2 + v_target**2)[(day-113)*48:(day-113+1)*48]
     dt = 0.05
     Fs = 1/dt
     wind = wind_speeds[2*hour]
-    # 合并插值结果，去掉重复的 b 点
+    # Merge interpolation results, omitting the duplicate b point.
     
     Fs = 1/dt
     segment_length = int(25.6 / 0.05)  # 512 points
@@ -900,11 +900,11 @@ def compare_asd(nc_file_path, lat, lon,day,hour,earthquake,Mw):
         f_pi, psd_pi = calc_psd(data, Fs)
         mask = (f_pi >= freq_list[i]) & (f_pi < freq_list[i + 1])
         
-        # 截取频率和PSD
+        # Slice frequency and PSD.
         f_segment = f_pi[mask]
         psd_segment = psd_pi[mask]
         
-        # 合并到总的 f_p 和 psd_p
+        # Append to the combined f_p and psd_p arrays.
         f_p.extend(f_segment)
         psd_p.extend(psd_segment)
     f_p = np.array(f_p)
@@ -917,11 +917,11 @@ def compare_asd(nc_file_path, lat, lon,day,hour,earthquake,Mw):
     filename = HERE / 'model_asd_data_final.txt'
     data = np.loadtxt(filename)
 
-    # 假设文件中有两行数据，第一行是频率，第二行是ASD for disp
+    # The file has two rows: frequency, then displacement ASD.
     frequencies = data[0, :]
     asd_disp = data[1, :]
     ratio,asd_disp = calculate_theoretical_asd(asd_disp, angle_distance,Mw)
-    # 确保只选择符合要求的数据范围
+    # Select only the required data range.
     mask = (frequencies >= 0.1) & (frequencies <= 10) & (asd_disp >= -15) & (asd_disp <= -6)
     filtered_frequencies = frequencies[mask]
     filtered_asd_disp = asd_disp[mask]
@@ -934,35 +934,35 @@ def compare_asd(nc_file_path, lat, lon,day,hour,earthquake,Mw):
     SpectrumVisualizer.plot_comparison([adjusted],[adjusted2],[adjusted3],hour,ratio,ratio1,ratio2,Mw)
     
     
-    input_txt_file_processed = HERE / 'processed_noise.txt'  # 处理后的 TXT 文件路径
-    # 读取处理后的 TXT 文件
+    input_txt_file_processed = HERE / 'processed_noise.txt'  # Path to the processed text file
+    # Read the processed text file.
     with open(input_txt_file_processed, 'r') as file:
         lines = file.readlines()
         frequencies_processed = lines[0].strip().split(',')
         values_processed = lines[1].strip().split(',')
 
-    # 将字符串转换为浮点数以便计算
+    # Convert strings to floats for calculation.
     frequencies_processed = np.array([float(f) for f in frequencies_processed])
     values_processed = np.array([float(v) for v in values_processed])
     #ax2.plot(np.log10(frequencies_processed), np.log10(values_processed), label='Original_noise', marker='x')
 
     
     
-    # 获取0.2-1Hz范围内的索引
+    # Find indices in the 0.2-1 Hz band.
     mask = (frequencies_processed >= 0.2) & (frequencies_processed <= 1)
     noise_mask = (filtered_frequencies >= 0.2) & (filtered_frequencies <= 1)
     #noise_freqs = 
-    # 提取0.2-1Hz范围内的数据
+    # Extract data in the 0.2-1 Hz band.
     noise_freqs = frequencies_processed[mask]
     noise_amplitudes = values_processed[mask]
     seismic_freqs = filtered_frequencies[noise_mask]
     seismic_amplitudes = (10**np.array(filtered_asd_disp))[noise_mask]
 
-    # 计算0.2-1Hz范围内噪声和地震信号的平均值
+    # Calculate mean noise and seismic signal levels over 0.2-1 Hz.
     mean_noise = np.mean(noise_amplitudes)
     mean_seismic = np.mean(seismic_amplitudes)
 
-    # 检查地震信号的平均值的80%是否高于噪声信号的平均值
+    # Check whether 80% of the mean seismic signal exceeds the mean noise.
     threshold = mean_seismic * 0.5 > mean_noise
 
     print(f"Noise Mean Amplitude: {mean_noise}")
@@ -975,19 +975,19 @@ def compare_asd(nc_file_path, lat, lon,day,hour,earthquake,Mw):
     return threshold
 
 def calculate_theoretical_asd(base_asd, angle_distance,Mw):
-    """基于振幅比例计算理论ASD"""
+    """Calculate theoretical ASD from the amplitude ratio."""
     ratio = (30.2 / math.degrees(angle_distance))*(10**((3/2)*(Mw-3.41)))
     print(ratio)
-    return ratio,base_asd + np.log10(ratio)  # 因ASD与A²成正比
+    return ratio,base_asd + np.log10(ratio)  # Because ASD is proportional to A^2.
 
-# 主程序
+# Main program
 if __name__ == "__main__":
     nc_file_path = str(MCD_FILE)
-    lat, lon = 21.1, -43.2  # 示例经纬度
-    min_value = 0  # 风速最小值
-    max_value = 16  # 风速最大值
-    u = 0.03  # 图像比例
-    integral = 1  # 积分常数（根据需要调整
+    lat, lon = 21.1, -43.2  # Example longitude and latitude
+    min_value = 0  # Minimum wind speed
+    max_value = 16  # Maximum wind speed
+    u = 0.03  # Figure aspect ratio
+    integral = 1  # Integration constant (adjust as needed)
     ans = {}
     for i in range(len(earthquake_points)):
         Mw = 2.9

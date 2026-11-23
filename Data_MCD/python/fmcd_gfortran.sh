@@ -21,7 +21,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$NETCDF/lib
 
 ### COPY/PREPARE SOURCES
 ### perform changes that makes f2py not to fail (i.e. remove all '!' commments in codes)sed s/"\!\!'"/"'"/g $wheremcd/MCD.F90            | sed s/"\!'"/"'"/g | sed s/"\!"/"\n\!"/g > tmp.MCD.F90
-# 不再使用变量，直接用当前目录的 MCD.F90
+# Use MCD.F90 in the current directory directly instead of the path variable.
 sed s/"\!\!'"/"'"/g MCD.F90 | sed s/"\!'"/"'"/g | sed s/"\!"/"\n\!"/g > tmp.MCD.F90
 ### BUILD THROUGH f2py WHAT IS NECESSARY TO CREATE THE PYTHON FUNCTIONS
 \rm -f fmcd.pyf

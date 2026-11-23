@@ -176,7 +176,7 @@ else:
 
 extvarkeys[19] = 1
 
-# 移除2D变量处理
+# Skip two-dimensional variables.
 var_list_2d = []
 if input_dict['is2d'] == 1:
     for idx in input_dict['2dvarkeys']:
@@ -184,7 +184,7 @@ if input_dict['is2d'] == 1:
             extvarkeys[np.int32(idx)-1] = 1
             var_list_2d.append(mcd_var_field[np.int32(idx)])
 
-# 设置Viking2着陆点坐标
+# Set the Viking 2 landing-site coordinates.
 viking2_lon = 134.01
 viking2_lat = 48.269
 
@@ -193,8 +193,8 @@ ls_start = input_dict['xdate_start']
 ls_end = input_dict['xdate_end']
 ls_step = input_dict['xdate_step']
 Ls = np.arange(ls_start,ls_end+ls_step,ls_step,dtype=np.float64)
-# 只需要地表1m高度
-zz=[100] # 1米高度
+# Only the level 1 m above the surface is needed.
+zz=[100] # Height: 1 m
 nz = 1
 nLs = len(Ls)
 if input_dict['zkey'] == 4:
@@ -204,28 +204,28 @@ elif input_dict['zkey'] == 2:
 elif input_dict['zkey'] == 3:
     xzs = zz
 
-# 设置本地时间范围
-nloc = input_dict.get('nloc', 24)  # 如果没有设置，默认为24个时间点
-locs = np.linspace(0, 23.5, nloc)  # 0-23.5小时
+# Set the local-time range.
+nloc = input_dict.get('nloc', 24)  # Default to 24 time points if unspecified.
+locs = np.linspace(0, 23.5, nloc)  # 0 to 23.5 hours
 
 n_jobs = np.min([2,nLs])
 
-# 初始化数据数组 - 只需要压强，维度为(时间, Ls)
+# Initialize the pressure array with dimensions (time, Ls).
 pressure_data = np.zeros((nloc, nLs), dtype=np.float64)
 
 def get_mcd_data(ils):
-    """获取单个 Ls 在Viking2着陆点的压强数据"""
-    # 初始化当前 Ls 的数据数组
+    """Get pressure at the Viking 2 landing site for one Ls value."""
+    # Initialize the data array for the current Ls.
     current_pressure = np.zeros(nloc, dtype=np.float64)
     
     for iloc in range(nloc):
-        # 调用 MCD 获取Viking2着陆点的数据
+        # Query MCD at the Viking 2 landing site.
         try:
             (pres, dens, temp, zonwind, merwind, 
              meanvar, extvar, seedout, ierr) = \
             mcd.call_mcd(
-                input_dict['zkey'], xzs[0],  # 只取地表1m高度
-                viking2_lon, viking2_lat,  # Viking2坐标
+                input_dict['zkey'], xzs[0],  # Select only the level 1 m above the surface.
+                viking2_lon, viking2_lat,  # Viking 2 coordinates
                 input_dict['hrkey'],
                 datekey, np.mod(Ls[ils], 360),
                 locs[iloc],
@@ -233,11 +233,11 @@ def get_mcd_data(ils):
                 perturkey, seedin, gwlength, extvarkeys
             )
             
-            # 保存压强数据
+            # Save pressure data.
             current_pressure[iloc] = pres
         except Exception as e:
             print(f"Error at Ls={Ls[ils]}, loc={locs[iloc]}: {e}")
-            # 填充 NaN
+            # Fill with NaN.
             current_pressure[iloc] = np.nan
     
     return current_pressure
@@ -251,11 +251,11 @@ end_time = time.time()
 elapsed_time = end_time - start_time
 console.print('elapsed_time of get_mcd_data: %.2f min' %(elapsed_time/60),style='success')
 
-# 合并结果
+# Merge results.
 for i in tqdm(range(nLs), desc='merge results'):
     pressure_data[:, i] = results[i]
 
-# 检查是否已有相同配置的文件
+# Check for an existing file with the same configuration.
 def save_file_checker(file_path):
     if os.path.exists(file_path):
         console.print('There is already a file: %s' %file_path,style='error')
@@ -266,7 +266,7 @@ def save_file_checker(file_path):
 save_file_checker(os.path.join(save_path,'viking2_pressure_LS_%.2f-%.2f_rev1.0.nc'\
     %(Ls[0],Ls[-1])))
 
-# 创建xarray数据集
+# Create the xarray dataset.
 save_dataset = xr.Dataset(
     data_vars={
         'pressure': (('ut', 'Ls'), pressure_data)
@@ -284,7 +284,7 @@ save_dataset = xr.Dataset(
     }
 )
 
-# 保存数据
+# Save data.
 save_dataset.to_netcdf(
     path=os.path.join(save_path,'viking2_pressure_LS_%.2f-%.2f_rev1.0.nc'\
     %(Ls[0],Ls[-1]))

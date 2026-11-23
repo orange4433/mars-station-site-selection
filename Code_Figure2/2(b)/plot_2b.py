@@ -7,17 +7,17 @@ from pathlib import Path
 scale = 18
 scale_value = 300
 import matplotlib.pyplot as plt
-plt.rcParams['font.family'] = 'Arial'  # 设置全局字体
+plt.rcParams['font.family'] = 'Arial'  # Set the global font.
 
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
-# ... 其他代码保持不变 ...
+# ... Leave the remaining code unchanged ...
 
-# 在绘图部分替换以下内容：
+# Replace the following plotting section:
 
-# 自定义经度标签格式化函数
+# Custom longitude label formatter
 def lon_formatter(x, pos):
     if x < 0:
         return f"{-x:.0f}°W"
@@ -26,7 +26,7 @@ def lon_formatter(x, pos):
     else:
         return "0"
 
-# 自定义纬度标签格式化函数
+# Custom latitude label formatter
 def lat_formatter(y, pos):
     if y > 0:
         return f"{y:.0f}°N"
@@ -37,104 +37,104 @@ def lat_formatter(y, pos):
 
 def calculate_insolation_point(Ls, local_hour, longitude):
     """
-    计算火星上给定点的地方时对应的直射点经纬度。
-    
-    参数:
-        Ls (float): 火星的太阳黄经 (Solar Longitude)，单位为度。
-        local_hour (int): 地方时，24小时制。
-        longitude (float): 经度，东经为正，单位为度。
-        
-    返回:
-        tuple: 直射点的纬度和经度，单位为度。
+    Calculate the subsolar latitude and longitude for a local time on Mars.
+
+    Parameters:
+        Ls (float): Mars solar longitude in degrees.
+        local_hour (int): Local time on a 24-hour clock.
+        longitude (float): Longitude in degrees, positive eastward.
+
+    Returns:
+        tuple: Subsolar latitude and longitude in degrees.
     """
-    # 转换地方时到太阳时角 (Hour Angle)
-    hour_angle = (local_hour - 12) * 15  # 每小时对应15度
+    # Convert local time to solar hour angle.
+    hour_angle = (local_hour - 12) * 15  # Each hour corresponds to 15 degrees.
     
-    # 火星的自转轴倾角 (Obliquity of the ecliptic for Mars)
-    epsilon = math.radians(25.19)  # 约25.19度
+    # Mars's axial tilt (obliquity)
+    epsilon = math.radians(25.19)  # Approximately 25.19 degrees
     
-    # 太阳赤纬 (Solar Declination)
+    # Solar declination
     delta = math.asin(math.sin(math.radians(Ls)) * math.sin(epsilon))
     
-    # 直射点纬度 (Latitude of the subsolar point)
+    # Latitude of the subsolar point
     latitude = math.degrees(delta)
     
-    # 计算太阳时角对直射点经度的影响
-    # 注意：这里的计算忽略了火星自转速度与地球的不同，以及轨道离心率等复杂因素
+    # Calculate the hour-angle contribution to subsolar longitude.
+    # This approximation ignores differences in rotation rate and orbital eccentricity.
     sub_solar_longitude = longitude - hour_angle
     
     return latitude, sub_solar_longitude
 
 def plot_wind_field_mcd(file_path, ls_value, local_hour, surface_file='surface.nc'):
-    # 打开NetCDF文件
+    # Open the NetCDF file.
     with nc.Dataset(file_path, 'r') as dataset:
         lons = dataset.variables['longitude'][:]  # (65,)
         lats = dataset.variables['latitude'][:]   # (49,)
-        ut_array = dataset.variables['ut'][:]     # (48,) 世界时
-        ls_array = dataset.variables['Ls'][:]      # (721,) 太阳经度
-        # 找到最接近的Ls索引
+        ut_array = dataset.variables['ut'][:]     # (48,) universal time
+        ls_array = dataset.variables['Ls'][:]      # (721,) solar longitude
+        # Find the nearest Ls index.
         ls_idx = np.argmin(np.abs(ls_array - ls_value))
         u_data = dataset.variables['U'][:, :, :, ls_idx]
         v_data = dataset.variables['V'][:, :, :, ls_idx]
         print(ls_idx)
-        # 计算每个经度对应的世界时
+        # Calculate universal time at each longitude.
         ut_target = (local_hour +9 - lons/15) % 24
         
-        # 初始化插值后的风场数据
+        # Initialize the interpolated wind field.
         u_interp = np.zeros((len(lons), len(lats)))
         v_interp = np.zeros((len(lons), len(lats)))
         
-        # 对每个经度点进行插值
+        # Interpolate at each longitude.
         for i, lon in enumerate(lons):
-            # 当前经度对应的目标世界时
+            # Target universal time at this longitude
             current_ut = ut_target[i]
             
-            # 扩展UT数组以处理周期边界
+            # Extend the UT array across the periodic boundary.
             ut_extended = np.append(ut_array, [24])
             
-            # 修正维度问题：确保数组形状一致
+            # Ensure compatible array shapes.
             u_slice = u_data[i, :, :]  # (49, 48)
             v_slice = v_data[i, :, :]  # (49, 48)
             
-            # 添加最后一个时间步的数据（即第一个时间步的数据）
+            # Append the first time step at the end.
             u_extended_data = np.concatenate([u_slice, u_slice[:, 0:1]], axis=1)
             v_extended_data = np.concatenate([v_slice, v_slice[:, 0:1]], axis=1)
             
-            # 创建插值函数
+            # Create the interpolation function.
             f_u = interp1d(ut_extended, u_extended_data, axis=1, kind='linear', 
                           bounds_error=False, fill_value="extrapolate")
             f_v = interp1d(ut_extended, v_extended_data, axis=1, kind='linear', 
                           bounds_error=False, fill_value="extrapolate")
             
-            # 执行插值
+            # Interpolate.
             u_interp[i, :] = f_u(current_ut)
             v_interp[i, :] = f_v(current_ut)
         
-        # 创建网格
+        # Create the grid.
         lon_grid, lat_grid = np.meshgrid(lons, lats, indexing='ij')
         
-        # 计算风速大小
+        # Calculate wind-speed magnitude.
         wind_speed = np.sqrt(u_interp**2 + v_interp**2)
         
         # ==============================================
-        # 新增：输出北纬3.75°、东经135°位置的风速信息
+        # Report wind information at 3.75 degrees N, 135 degrees E.
         # ==============================================
-        target_lat = 3.75  # 北纬3.75°
-        target_lon = 135.0  # 东经135°
+        target_lat = 3.75  # 3.75 degrees N
+        target_lon = 135.0  # 135 degrees E
         
-        # 找到最接近的经度和纬度索引
+        # Find the nearest longitude and latitude indices.
         lon_idx = np.argmin(np.abs(lons - target_lon))
         lat_idx = np.argmin(np.abs(lats - target_lat))
         
-        # 获取该位置的风速信息
+        # Get wind information at this location.
         u_value = u_interp[lon_idx, lat_idx]
         v_value = v_interp[lon_idx, lat_idx]
         wind_speed_value = wind_speed[lon_idx, lat_idx]
         
-        # 计算风向（角度，0°为正北，顺时针增加）
+        # Calculate wind direction in degrees, clockwise from north.
         wind_direction = np.degrees(np.arctan2(-u_value, -v_value)) % 360
         
-        # 输出结果
+        # Print results.
         print("\n" + "="*60)
         print(f"Wind information at {target_lat}°N, {target_lon}°E:")
         print(f"U component (east-west): {u_value:.2f} m/s")
@@ -144,10 +144,10 @@ def plot_wind_field_mcd(file_path, ls_value, local_hour, surface_file='surface.n
         print("="*60 + "\n")
         
         
-    # 绘制风场图
+    # Plot the wind field.
     plt.figure(figsize=(12, 6))
     
-    # 填充背景颜色
+    # Fill the background.
     contour = plt.contourf(lon_grid, lat_grid, wind_speed, cmap='plasma', 
                           levels=np.linspace(0, 16, 17), extend='both', 
                           vmin=0, vmax=16)
@@ -155,35 +155,35 @@ def plot_wind_field_mcd(file_path, ls_value, local_hour, surface_file='surface.n
     cbar.set_label('Horizontal Wind Speed (m/s)', fontsize=scale)
     cbar.ax.tick_params(labelsize=scale-2)
     
-    # 绘制风矢量图（每2个点取一个）
+    # Plot wind vectors at every second grid point.
     stride = 2
     quiver = plt.quiver(lon_grid[::stride, ::stride], lat_grid[::stride, ::stride],
                        u_interp[::stride, ::stride], v_interp[::stride, ::stride],
                        color='cyan', scale=scale_value)
     
-    # 添加矢量比例说明
+    # Add the vector scale key.
     scale_str = f"Scale: {quiver.scale:.2f}"
     
-    # 添加地形等高线
+    # Add topographic contours.
     with nc.Dataset(surface_file, 'r') as surface_dataset:
         lats_surface = surface_dataset.variables['latitude'][:]
         lons_surface = surface_dataset.variables['longitude'][:]
         elevation = surface_dataset.variables['zMOL'][:]
         
-        # 调整经度到-180~180范围
+        # Wrap longitude to -180 to 180 degrees.
         lons_surface = np.where(lons_surface > 180, lons_surface - 360, lons_surface)
         lon_surface, lat_surface = np.meshgrid(lons_surface, lats_surface)
         
-        # 绘制等高线
+        # Draw contours.
         CS = plt.contour(lon_surface, lat_surface, elevation, 
                         colors=[(0, 0, 0, 0.5)], levels=np.arange(-10, 8.1, 2))
         plt.clabel(CS, inline=True, fontsize=5)
     
-    # 标记InSight位置 - 使用白色背景红色文字
+    # Label InSight in red with a white background.
     plt.annotate(
         'InSight',
         xy=(135.6, 4.5),
-        xytext=(135.6 - 30, 4.5 + 15),  # 调整文本位置
+        xytext=(135.6 - 30, 4.5 + 15),  # Adjust the text position.
         fontsize=scale,
         color='red',
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor='red', alpha=0.9),
@@ -197,18 +197,18 @@ def plot_wind_field_mcd(file_path, ls_value, local_hour, surface_file='surface.n
     ax = plt.gca()
     ax.xaxis.set_major_formatter(FuncFormatter(lon_formatter))
     ax.yaxis.set_major_formatter(FuncFormatter(lat_formatter))
-      # 例如 16
+      # For example, 16
     #plt.title(f'Global Wind Field at Ls={ls_value:.2f} Local Hour={local_hour}', fontsize=scale+2)
     plt.grid(True)
     
-    # 保存图片
+    # Save the figure.
     filename = Path(__file__).resolve().parent / f'mcd_wind_field_ls_{ls_value}_local_hour_{local_hour}.png'
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     plt.close()
     
     print(f"Wind field saved to {filename}")
 
-# 示例调用
+# Example call
 if __name__ == '__main__':
     figure2_dir = Path(__file__).resolve().parents[1]
     plot_wind_field_mcd(
