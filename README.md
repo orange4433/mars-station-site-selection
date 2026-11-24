@@ -1,4 +1,4 @@
-# Mars Station Site Selection
+# Low-Wind-Noise Landing Site Selection for Martian Seismology
 
 Research code and documents for **Where Mars Is Quiet: Atmospheric Constraints on Martian Seismology**. The study uses Mars climate models, wind fields and seismic observations to assess station locations and observing conditions.
 
